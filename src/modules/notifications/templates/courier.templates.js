@@ -52,8 +52,8 @@ const ORDER_DELIVERED = {
       bodyHtml: `<p style="margin:0 0 16px;font-size:14px;color:#3f3f46;">Order ${escapeHtml(
         order.orderNumber || ''
       )} has been delivered. We hope you love it!</p>
-        <p style="margin:0;font-size:14px;color:#3f3f46;">If anything is not right, you can request a return from your Taqwa account.</p>`,
-      bodyText: `Order ${order.orderNumber || ''} has been delivered. If anything is not right, you can request a return from your Taqwa account.`,
+        <p style="margin:0;font-size:14px;color:#3f3f46;">If anything is not right, you can request a return from your Asia Electronics account.</p>`,
+      bodyText: `Order ${order.orderNumber || ''} has been delivered. If anything is not right, you can request a return from your Asia Electronics account.`,
     });
   },
 };

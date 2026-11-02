@@ -294,7 +294,7 @@ test('customer ORDER_PLACED email renders the full premium order confirmation', 
   assert.match(rendered.html, /Track Your Order/);
   assert.match(
     rendered.html,
-    /href="https:\/\/www\.taqwactg\.com\/track-order"/
+    /href="https:\/\/www\.asiaelectronicsonline\.com\/track-order"/
   );
   assert.ok(
     !rendered.html.includes('undefined') && !rendered.html.includes('null'),
@@ -304,7 +304,7 @@ test('customer ORDER_PLACED email renders the full premium order confirmation', 
 
   assert.match(rendered.text, /Order number: TAQ-20260808-000001/);
   assert.match(rendered.text, /Grand total: \u09F32,100\.00/);
-  assert.match(rendered.text, /Track your order: https:\/\/www\.taqwactg\.com\/track-order/);
+  assert.match(rendered.text, /Track your order: https:\/\/www\.asiaelectronicsonline\.com\/track-order/);
 });
 
 test('customer ORDER_PLACED email omits product images when none are available', () => {

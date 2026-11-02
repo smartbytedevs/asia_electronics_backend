@@ -63,16 +63,26 @@ function clampWeight(value) {
 }
 
 /**
- * Parses Pathao's `YYYY-MM-DD HH:MM:SS` timestamp. Pathao returns server-local
- * wall times without a zone; we interpret them as UTC to keep ordering
- * consistent. Returns null for unparseable values.
+ * Parses Pathao timestamps. Pathao returns `YYYY-MM-DD HH:MM:SS` wall times
+ * without a zone (API responses) and ISO-8601 strings with an offset
+ * (webhook `timestamp`). Wall times are interpreted as UTC to keep ordering
+ * consistent; explicit offsets are preserved. Returns null for unparseable
+ * values.
  */
 function parsePathaoDateTime(value) {
   if (!value) {
     return null;
   }
-  const normalized = String(value).replace(' ', 'T');
-  const parsed = new Date(normalized.endsWith('Z') ? normalized : `${normalized}Z`);
+  const raw = String(value).trim();
+  let normalized;
+  if (/[zZ]$/.test(raw)) {
+    normalized = raw;
+  } else if (/[+-]\d{2}:?\d{2}$/.test(raw)) {
+    normalized = raw;
+  } else {
+    normalized = `${raw.replace(' ', 'T')}Z`;
+  }
+  const parsed = new Date(normalized);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
@@ -95,7 +105,10 @@ function buildCreateOrderPayload({ payload, storeId }) {
     item_quantity: payload.itemQuantity > 0 ? payload.itemQuantity : 1,
     item_weight: clampWeight(payload.itemWeightKg),
     item_description: truncate(payload.itemDescription, COURIER_LIMITS.ITEM_DESCRIPTION_MAX) || 'Order items',
-    amount_to_collect: Math.round((payload.amountToCollectMinorUnits || 0) / 100),
+    amount_to_collect: Math.max(
+      0,
+      Math.round((payload.amountToCollectMinorUnits || 0) / 100)
+    ),
   };
   if (payload.specialInstruction) {
     body.special_instruction = truncate(
@@ -124,13 +137,17 @@ function mapSubmitResult(response) {
 
 /**
  * Normalizes the order-status response into a StatusResult.
+ *
+ * `/orders/{id}/info` returns `order_status`, `order_status_slug` and
+ * `updated_at`; older responses used `order_status_updated_at` /
+ * `order_updated_at`. All variants are accepted.
  */
 function mapStatusResult(response) {
   const data = (response && response.data) || {};
   return {
-    providerStatus: data.order_status || null,
+    providerStatus: data.order_status || data.order_status_slug || null,
     providerStatusUpdatedAt: parsePathaoDateTime(
-      data.order_status_updated_at || data.order_updated_at
+      data.order_status_updated_at || data.updated_at || data.order_updated_at
     ),
     raw: response,
   };
@@ -142,9 +159,56 @@ function mapStatusResult(response) {
 function mapCancelResult(response) {
   const data = (response && response.data) || {};
   return {
-    cancelledAt: parsePathaoDateTime(data.order_status_updated_at || data.updated_at),
+    cancelledAt: parsePathaoDateTime(
+      data.order_status_updated_at || data.updated_at || data.order_updated_at
+    ),
     raw: response,
   };
+}
+
+/**
+ * Maps a Pathao webhook `event` (e.g. `order.delivered`,
+ * `order.pickup-cancelled`) to the provider status label stored on the
+ * shipment. Unknown events fall back to the humanized event name so the raw
+ * provider status is still useful for support/debugging.
+ */
+const WEBHOOK_EVENT_STATUS = Object.freeze({
+  'order.created': 'Pending',
+  'order.updated': 'Updated',
+  'order.pickup-requested': 'Pickup Requested',
+  'order.assigned-for-pickup': 'Assigned for Pickup',
+  'order.picked': 'Picked',
+  'order.pickup-failed': 'Pickup Failed',
+  'order.pickup-cancelled': 'Cancelled',
+  'order.at-the-sorting-hub': 'At Sorting Hub',
+  'order.in-transit': 'In Transit',
+  'order.received-at-last-mile-hub': 'Received at Last Mile Hub',
+  'order.assigned-for-delivery': 'Assigned for Delivery',
+  'order.delivered': 'Delivered',
+  'order.partial-delivery': 'Partial Delivery',
+  'order.returned': 'Returned',
+  'order.delivery-failed': 'Delivery Failed',
+  'order.on-hold': 'On Hold',
+  'order.paid': 'Paid',
+  'order.paid-return': 'Paid Return',
+  'order.exchanged': 'Exchanged',
+});
+
+function humanizeEvent(event) {
+  return String(event || '')
+    .replace(/^order\./, '')
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function mapWebhookEventToProviderStatus(event) {
+  const key = String(event || '').toLowerCase();
+  if (WEBHOOK_EVENT_STATUS[key]) {
+    return WEBHOOK_EVENT_STATUS[key];
+  }
+  return humanizeEvent(key) || null;
 }
 
 /**
@@ -174,6 +238,7 @@ function isTerminalProviderStatus(providerStatus) {
 module.exports = {
   DELIVERY_TYPES,
   ITEM_TYPES,
+  WEBHOOK_EVENT_STATUS,
   normalizeBdPhone,
   clampWeight,
   parsePathaoDateTime,
@@ -181,6 +246,7 @@ module.exports = {
   mapSubmitResult,
   mapStatusResult,
   mapCancelResult,
+  mapWebhookEventToProviderStatus,
   mapProviderStatus,
   isTerminalProviderStatus,
 };

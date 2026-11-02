@@ -228,7 +228,7 @@ function orderConfirmedText(data) {
     lines.push('', 'Order notes:', order.notes);
   }
   if (data.trackOrderUrl) {
-    lines.push('', `Track your order: ${"https://www.taqwactg.com/track-order"}`);
+    lines.push('', `Track your order: ${"https://www.asiaelectronicsonline.com/track-order"}`);
   }
   lines.push('', 'Our team will confirm your order shortly.');
   return lines.join('\n');
@@ -261,7 +261,7 @@ const ORDER_PLACED = {
         </table>
         ${deliveryAddressHtml(order) ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;"><tr>${deliveryAddressHtml(order)}</tr></table>` : ''}
         ${notesHtml(order) ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;"><tr>${notesHtml(order)}</tr></table>` : ''}
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;"><tr><td>${emailButton('https://www.taqwactg.com/track-order', 'Track Your Order')}</td></tr></table>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;"><tr><td>${emailButton('https://www.asiaelectronicsonline.com/track-order', 'Track Your Order')}</td></tr></table>
         <p style="margin:0;font-size:14px;line-height:1.7;color:#6b6459;">Our team will confirm your order shortly.</p>`,
       bodyText: orderConfirmedText(data),
     });

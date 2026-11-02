@@ -9,10 +9,10 @@ const {
  * Thin OAuth2 + HTTP client for the Pathao Courier Merchant API
  * (Phase 09, ADR-0017).
  *
- * Endpoints (verified against the public sandbox 2026-08-08):
+ * Endpoints (verified against the sandbox and documented production API):
  *   POST /aladdin/api/v1/issue-token                 → OAuth2 access_token
  *   POST /aladdin/api/v1/orders                      → create consignment
- *   GET  /aladdin/api/v1/orders/{consignmentId}      → full order status
+ *   GET  /aladdin/api/v1/orders/{consignmentId}/info → short status + tracking
  *   POST /aladdin/api/v1/orders/{consignmentId}/cancel → cancel (best-effort)
  *
  * Error classification:
@@ -20,7 +20,8 @@ const {
  *   - 4xx / provider `error:true` payload → PROVIDER_REJECTED (config/payload)
  *
  * Token lifecycle: OAuth2 bearer fetched lazily, cached until near expiry,
- * refreshed automatically and retried once on a 401.
+ * refreshed automatically via the refresh_token grant (falling back to the
+ * password grant) and retried once on a 401.
  *
  * Configuration validation is DEFERRED to the first call (per the provider
  * interface contract) so application boot never fails on missing credentials.
@@ -45,6 +46,7 @@ class PathaoClient {
     this.fetchImpl = fetchImpl;
     this.now = now;
     this.token = null;
+    this.refreshToken = null;
   }
 
   assertConfigured(fields = {}) {
@@ -109,9 +111,11 @@ class PathaoClient {
       return { status: response.status, data: json };
     }
 
-    const raw = json || { status: response.status };
+    // Always carry the HTTP status so callers (the 401 refresh path, tests)
+    // can inspect it without depending on the provider's error body shape.
+    const raw = { ...(json || {}), status: response.status };
     const message =
-      raw && (raw.message || raw.error)
+      raw.message || raw.error
         ? String(raw.message || raw.error)
         : `Pathao returned HTTP ${response.status}`;
     throw new CourierProviderError(
@@ -124,11 +128,21 @@ class PathaoClient {
   }
 
   /**
-   * Rejects response payloads that carry Pathao's `error: true` flag even
-   * though the HTTP status is 2xx (the sandbox cancel endpoint does this).
+   * Rejects response payloads that carry Pathao's error envelope even though
+   * the HTTP status is 2xx (the sandbox cancel endpoint does this:
+   * `{ error: true }`, and some endpoints return `{ type: 'error' }` or a
+   * non-200 `code` in a 200 response).
    */
   assertSuccessPayload(json, context) {
-    if (json && json.error === true) {
+    if (!json) {
+      return;
+    }
+    const code = Number(json.code);
+    const isError =
+      json.error === true ||
+      String(json.type || '').toLowerCase() === 'error' ||
+      (Number.isFinite(code) && code >= 400);
+    if (isError) {
       throw new CourierProviderError(
         COURIER_PROVIDER_ERROR_CODES.PROVIDER_REJECTED,
         `Pathao ${context} failed: ${json.message || 'unknown error'}`,
@@ -137,18 +151,30 @@ class PathaoClient {
     }
   }
 
-  async issueToken() {
+  async issueToken({ grantType = 'password' } = {}) {
+    const body =
+      grantType === 'refresh_token'
+        ? {
+            client_id: this.clientId,
+            client_secret: this.clientSecret,
+            grant_type: 'refresh_token',
+            refresh_token: this.refreshToken,
+          }
+        : {
+            client_id: this.clientId,
+            client_secret: this.clientSecret,
+            username: this.username,
+            password: this.password,
+            grant_type: 'password',
+          };
+
     const { data } = await this.request({
       method: 'POST',
       path: '/aladdin/api/v1/issue-token',
-      body: {
-        client_id: this.clientId,
-        client_secret: this.clientSecret,
-        username: this.username,
-        password: this.password,
-        grant_type: 'password',
-      },
+      body,
     });
+    this.assertSuccessPayload(data, 'token issue');
+
     const accessToken = data && (data.access_token || data.accessToken);
     if (!accessToken) {
       throw new CourierProviderError(
@@ -159,6 +185,7 @@ class PathaoClient {
     }
     const expiresIn = Number(data.expires_in) || 3600;
     this.token = { accessToken, expiresAt: this.now() + expiresIn * 1000 };
+    this.refreshToken = data.refresh_token || data.refreshToken || null;
     return this.token;
   }
 
@@ -166,6 +193,15 @@ class PathaoClient {
     // Refresh ~60s before expiry to avoid mid-flight expirations.
     if (this.token && this.token.expiresAt > this.now() + 60_000) {
       return this.token.accessToken;
+    }
+    if (this.refreshToken) {
+      try {
+        await this.issueToken({ grantType: 'refresh_token' });
+        return this.token.accessToken;
+      } catch {
+        // Refresh token expired/revoked — fall back to the password grant.
+        this.refreshToken = null;
+      }
     }
     await this.issueToken();
     return this.token.accessToken;
@@ -211,9 +247,12 @@ class PathaoClient {
   }
 
   async getOrderStatus(consignmentId) {
+    // `/info` is Pathao's documented tracking endpoint. It returns
+    // `{ data: { consignment_id, merchant_order_id, order_status,
+    //   order_status_slug, updated_at, invoice_id } }`.
     const { data } = await this.authedRequest({
       method: 'GET',
-      path: `/aladdin/api/v1/orders/${encodeURIComponent(consignmentId)}`,
+      path: `/aladdin/api/v1/orders/${encodeURIComponent(consignmentId)}/info`,
     });
     this.assertSuccessPayload(data, 'order status');
     return data;

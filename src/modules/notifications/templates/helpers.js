@@ -7,7 +7,7 @@
  * Money is integer minor units (paisa) everywhere; `formatMinorUnits` renders
  * the BDT taka symbol (৳) with two decimal places.
  *
- * Design tokens (premium Taqwa fashion/e-commerce email system):
+ * Design tokens (premium Asia Electronics e-commerce email system):
  *   background  #f6f1e6  (warm ivory)
  *   card        #ffffff
  *   ink         #2a2722  (dark charcoal)

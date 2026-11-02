@@ -614,6 +614,15 @@ class CourierService {
     return this.verifySignature({ signature, secret: this.webhookSecret });
   }
 
+  /**
+   * Value Pathao expects echoed in `X-Pathao-Merchant-Webhook-Integration-
+   * Secret` when it verifies a callback URL. Empty until PATHAO_WEBHOOK_SECRET
+   * is configured.
+   */
+  getWebhookIntegrationSecret() {
+    return this.webhookSecret;
+  }
+
   // ────────────────────────── internals ──────────────────────────
 
   _historyEntry(status, by, note) {

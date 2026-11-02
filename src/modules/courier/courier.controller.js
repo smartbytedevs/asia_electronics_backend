@@ -3,7 +3,10 @@
 const ApiError = require('../../utils/ApiError');
 const { ERROR_CODES } = require('../../constants');
 const { validateDispatchInput } = require('./courier.validation');
-const { normalizePathaoWebhook } = require('./pathao/pathao.webhook');
+const {
+  isWebhookIntegrationEvent,
+  normalizePathaoWebhook,
+} = require('./pathao/pathao.webhook');
 const { COURIER_MESSAGES } = require('./courier.constants');
 
 /**
@@ -106,6 +109,29 @@ function createCourierController({ courierService }) {
 
     // POST /webhooks/pathao — public (signature-verified), Pathao calls this.
     webhook: async (req, res) => {
+      // Pathao requires every webhook response to echo the integration secret.
+      // Without it the callback URL is rejected during merchant-panel setup.
+      const integrationSecret = courierService.getWebhookIntegrationSecret();
+      if (integrationSecret) {
+        res.set('X-Pathao-Merchant-Webhook-Integration-Secret', integrationSecret);
+      }
+
+      // Merchant-panel verification handshake: `{ event: 'webhook_integration' }`.
+      // Pathao expects HTTP 202 and the integration secret header above.
+      if (isWebhookIntegrationEvent(req.body)) {
+        if (!integrationSecret) {
+          throw new ApiError(
+            503,
+            'Courier webhook secret is not configured',
+            ERROR_CODES.COURIER_PROVIDER_NOT_CONFIGURED
+          );
+        }
+        return res.status(202).json({
+          success: true,
+          message: COURIER_MESSAGES.WEBHOOK_ACCEPTED,
+        });
+      }
+
       if (!courierService.isValidWebhookSignature(req.get('X-Pathao-Signature'))) {
         throw new ApiError(
           401,

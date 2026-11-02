@@ -263,9 +263,9 @@ test('notify appends the trackOrderUrl deep link when the storefront base URL is
     'https://taqwactg.com/track/TAQ-20260808-000001'
   );
   const sent = emailService.calls.sends[0];
-  assert.ok(sent.html.includes('https://www.taqwactg.com/track-order'));
+  assert.ok(sent.html.includes('https://www.asiaelectronicsonline.com/track-order'));
   assert.ok(sent.html.includes('Track Your Order'));
-  assert.match(sent.text, /Track your order: https:\/\/www\.taqwactg\.com\/track-order/);
+  assert.match(sent.text, /Track your order: https:\/\/www\.asiaelectronicsonline\.com\/track-order/);
 });
 
 test('notify does not add a trackOrderUrl without a storefront base URL or order number', async () => {

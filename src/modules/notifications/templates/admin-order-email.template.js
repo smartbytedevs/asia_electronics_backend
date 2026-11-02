@@ -20,7 +20,7 @@ const {
  * with `adminOrderUrl` appended by NotificationService.notifyAdminEmail) and
  * returns `{ subject, html, text }`.
  *
- * Shares the premium Taqwa email design system with the customer templates
+ * Shares the premium Asia Electronics email design system with the customer templates
  * (warm ivory canvas, dark charcoal type, muted-gold accents, white cards)
  * but stays information-dense and operational for the business. The email is
  * fully self-contained (table-based, Gmail-safe, inline styles). Every
@@ -116,13 +116,13 @@ function buildAdminOrderEmailHtml({ data }) {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;">
           <tr>
             <td align="center" style="padding:0 0 22px;">
-              <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:26px;letter-spacing:6px;color:#2a2722;text-transform:uppercase;">Taqwa</p>
+              <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:26px;letter-spacing:6px;color:#2a2722;text-transform:uppercase;">Asia Electronics</p>
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:10px auto 0;">
                 <tr>
                   <td style="width:40px;border-top:1px solid #a8854c;font-size:0;line-height:1px;height:1px;">&nbsp;</td>
                 </tr>
               </table>
-              <p style="margin:8px 0 0;font-size:11px;letter-spacing:2.5px;color:#9a9184;text-transform:uppercase;">taqwactg.com</p>
+              <p style="margin:8px 0 0;font-size:11px;letter-spacing:2.5px;color:#9a9184;text-transform:uppercase;">asiaelectronicsonline.com</p>
             </td>
           </tr>
           <tr>
@@ -208,7 +208,7 @@ function buildAdminOrderEmailHtml({ data }) {
                       </tr>
                     </table>
                     <p style="margin:18px 0 0;font-size:12px;line-height:1.7;color:#9a9184;">
-                      This is an automated notification from the Taqwa admin system (taqwactg.com).
+                      This is an automated notification from the Asia Electronics admin system (asiaelectronicsonline.com).
                     </p>
                   </td>
                 </tr>
@@ -256,7 +256,7 @@ function buildAdminOrderEmailText({ data }) {
   if (data.adminOrderUrl) {
     lines.push('', `View in admin dashboard: ${data.adminOrderUrl}`);
   }
-  lines.push('', 'Taqwa (taqwactg.com)');
+  lines.push('', 'Asia Electronics (asiaelectronicsonline.com)');
   return lines.join('\n');
 }
 

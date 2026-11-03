@@ -57,7 +57,13 @@ function createMemoryProductRepository(initial = []) {
     updateById: async (id, update) => {
       const doc = docs.find((d) => String(d._id) === String(id));
       if (!doc) return null;
-      Object.assign(doc, update, { updatedAt: new Date() });
+      const { $unset, ...fields } = update;
+      Object.assign(doc, fields, { updatedAt: new Date() });
+      if ($unset) {
+        for (const key of Object.keys($unset)) {
+          delete doc[key];
+        }
+      }
       return doc;
     },
     count: async (filter) =>
@@ -358,6 +364,124 @@ test('updateProduct applies a partial patch and preserves omitted fields', async
   assert.equal(result.name, 'New Name');
   assert.equal(result.description, 'keep me');
   assert.equal(result.slug, 'premium-abaya', 'slug preserved when not provided');
+});
+
+test('updateProduct retains the product own SKU when it is resent unchanged', async () => {
+  const existing = productDoc({ stockKeepingUnit: 'SKU-ROOT' });
+  const other = productDoc({
+    _id: '507f1f77bcf86cd799439012',
+    slug: 'other-product',
+    stockKeepingUnit: 'SKU-OTHER',
+  });
+  const { service, productRepository } = makeService({ products: [existing, other] });
+
+  const result = await service.updateProduct(
+    String(existing._id),
+    { name: 'Renamed', stockKeepingUnit: ' sku-root ' },
+    { role: ROLES.ADMIN }
+  );
+
+  assert.equal(result.name, 'Renamed');
+  assert.equal(result.stockKeepingUnit, 'SKU-ROOT');
+  const stored = productRepository.docs.find((d) => d._id === existing._id);
+  assert.equal(stored.stockKeepingUnit, 'SKU-ROOT', 'own SKU stays intact');
+});
+
+test('updateProduct accepts a no-op update that only resends the current SKU', async () => {
+  const existing = productDoc({ stockKeepingUnit: 'SKU-ROOT' });
+  const { service } = makeService({ products: [existing] });
+
+  const result = await service.updateProduct(
+    String(existing._id),
+    { stockKeepingUnit: 'SKU-ROOT' },
+    { role: ROLES.ADMIN }
+  );
+
+  assert.equal(result.stockKeepingUnit, 'SKU-ROOT');
+});
+
+test('updateProduct rejects changing a SKU to another product existing SKU', async () => {
+  const existing = productDoc({ stockKeepingUnit: 'SKU-ROOT' });
+  const other = productDoc({
+    _id: '507f1f77bcf86cd799439012',
+    slug: 'other-product',
+    stockKeepingUnit: 'SKU-OTHER',
+  });
+  const { service, productRepository } = makeService({ products: [existing, other] });
+
+  await assert.rejects(
+    service.updateProduct(
+      String(existing._id),
+      { stockKeepingUnit: 'sku-other' },
+      { role: ROLES.ADMIN }
+    ),
+    (err) => {
+      assert.equal(err.statusCode, 400);
+      assert.equal(err.code, ERROR_CODES.PRODUCT_SKU_ALREADY_EXISTS);
+      return true;
+    }
+  );
+  assert.equal(
+    productRepository.docs.find((d) => d._id === existing._id).stockKeepingUnit,
+    'SKU-ROOT',
+    'rejected update leaves the stored SKU unchanged'
+  );
+});
+
+test('updateProduct allows changing a SKU to a new unique value', async () => {
+  const existing = productDoc({ stockKeepingUnit: 'SKU-ROOT' });
+  const other = productDoc({
+    _id: '507f1f77bcf86cd799439012',
+    slug: 'other-product',
+    stockKeepingUnit: 'SKU-OTHER',
+  });
+  const { service, productRepository } = makeService({ products: [existing, other] });
+
+  const result = await service.updateProduct(
+    String(existing._id),
+    { stockKeepingUnit: ' sku-new ' },
+    { role: ROLES.ADMIN }
+  );
+
+  assert.equal(result.stockKeepingUnit, 'SKU-NEW');
+  assert.equal(
+    productRepository.docs.find((d) => d._id === existing._id).stockKeepingUnit,
+    'SKU-NEW'
+  );
+});
+
+test('updateProduct clears a SKU without creating a null collision', async () => {
+  const existing = productDoc({ stockKeepingUnit: 'SKU-ROOT' });
+  const other = productDoc({
+    _id: '507f1f77bcf86cd799439012',
+    slug: 'other-product',
+    stockKeepingUnit: 'SKU-OTHER',
+  });
+  const { service, productRepository } = makeService({ products: [existing, other] });
+
+  const result = await service.updateProduct(
+    String(existing._id),
+    { stockKeepingUnit: null },
+    { role: ROLES.ADMIN }
+  );
+
+  assert.equal(result.stockKeepingUnit, null);
+  const stored = productRepository.docs.find((d) => d._id === existing._id);
+  assert.ok(!('stockKeepingUnit' in stored), 'clearing unsets the sparse-indexed field');
+});
+
+test('updateProduct clears a SKU sent as an empty string', async () => {
+  const existing = productDoc({ stockKeepingUnit: 'SKU-ROOT' });
+  const { service, productRepository } = makeService({ products: [existing] });
+
+  const result = await service.updateProduct(
+    String(existing._id),
+    { stockKeepingUnit: '' },
+    { role: ROLES.ADMIN }
+  );
+
+  assert.equal(result.stockKeepingUnit, null);
+  assert.ok(!('stockKeepingUnit' in productRepository.docs[0]));
 });
 
 test('updateProduct rejects an SKU change on an existing variant (SKU is immutable)', async () => {

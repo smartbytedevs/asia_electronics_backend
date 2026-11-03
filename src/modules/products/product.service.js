@@ -576,12 +576,39 @@ class ProductService {
     if (value.specifications !== undefined) {
       update.specifications = value.specifications;
     }
+    // Product-level SKU is optional but globally unique. Uniqueness is
+    // enforced against OTHER products only — a product keeps its own SKU
+    // without re-checking itself (the admin form always sends the field).
+    let skuRetained = false;
     if (value.stockKeepingUnit !== undefined) {
-      update.stockKeepingUnit = value.stockKeepingUnit;
-    } else if (raw.stockKeepingUnit === '' || raw.stockKeepingUnit === null) {
+      const currentSku =
+        typeof existing.stockKeepingUnit === 'string'
+          ? existing.stockKeepingUnit.trim().toUpperCase()
+          : null;
+      if (value.stockKeepingUnit === currentSku) {
+        // Retaining the current SKU is not a collision. Skipping the write also
+        // keeps an unchanged save from touching the unique index at all.
+        skuRetained = true;
+      } else {
+        const clash = await this.repository.findOne({
+          stockKeepingUnit: value.stockKeepingUnit,
+        });
+        if (clash && String(clash._id) !== String(id)) {
+          throw this.productSkuExists();
+        }
+        update.stockKeepingUnit = value.stockKeepingUnit;
+      }
+    } else if (
+      raw.stockKeepingUnit === null ||
+      (typeof raw.stockKeepingUnit === 'string' && raw.stockKeepingUnit.trim() === '')
+    ) {
       // The validator normalizes an empty SKU to undefined; an explicit clear
-      // from the admin form must still remove the stored value.
-      update.stockKeepingUnit = null;
+      // from the admin form must still remove the stored value. Unset instead
+      // of storing null so the sparse unique index does not treat every
+      // SKU-less product as a duplicate of the others.
+      if (existing.stockKeepingUnit !== undefined && existing.stockKeepingUnit !== null) {
+        update.$unset = { stockKeepingUnit: 1 };
+      }
     }
     if (value.warrantyPeriod === undefined && raw.warrantyPeriod === null) {
       update.warrantyPeriod = null;
@@ -611,27 +638,32 @@ class ProductService {
       this.variantService.assertGuideMatchesVariantSizes(finalGuide, existingVariants);
     }
 
-    if (Object.keys(update).length === 0 && !replacement) {
+    if (Object.keys(update).length === 0 && !replacement && !skuRetained) {
       throw this.invalid('No valid fields to update');
     }
 
     let updatedProduct;
-    try {
-      updatedProduct = await this.runTransaction(async (session) => {
-        const product = await this.repository.updateById(id, update, { session });
-        if (!product) {
-          throw this.notFound();
+    if (Object.keys(update).length === 0 && !replacement) {
+      // The only supplied field was the product's existing SKU — a no-op.
+      updatedProduct = existing;
+    } else {
+      try {
+        updatedProduct = await this.runTransaction(async (session) => {
+          const product = await this.repository.updateById(id, update, { session });
+          if (!product) {
+            throw this.notFound();
+          }
+          if (replacement) {
+            await this.applyVariantReplacement(id, replacement, existingVariants, session);
+          }
+          return product;
+        });
+      } catch (err) {
+        if (isDuplicateKeyError(err)) {
+          throw this.mapDuplicateKeyError(err);
         }
-        if (replacement) {
-          await this.applyVariantReplacement(id, replacement, existingVariants, session);
-        }
-        return product;
-      });
-    } catch (err) {
-      if (isDuplicateKeyError(err)) {
-        throw this.mapDuplicateKeyError(err);
+        throw err;
       }
-      throw err;
     }
 
     return this.loadFullProduct(updatedProduct, {

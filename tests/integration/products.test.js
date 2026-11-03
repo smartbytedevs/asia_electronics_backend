@@ -147,7 +147,13 @@ function createMemoryProductRepository(initial = []) {
     updateById: async (id, update) => {
       const doc = docs.find((d) => String(d._id) === String(id));
       if (!doc) return null;
-      Object.assign(doc, update, { updatedAt: new Date() });
+      const { $unset, ...fields } = update;
+      Object.assign(doc, fields, { updatedAt: new Date() });
+      if ($unset) {
+        for (const key of Object.keys($unset)) {
+          delete doc[key];
+        }
+      }
       return doc;
     },
     count: async (filter) =>
@@ -741,6 +747,68 @@ test('PATCH as ADMIN applies a partial update and keeps omitted fields', () => {
       assert.equal(body.data.product.name, 'Renamed');
       assert.equal(body.data.product.description, 'keep me', 'PATCH preserves omitted fields');
       assert.equal(body.data.product.slug, 'premium-abaya');
+    }
+  )();
+});
+
+test('PATCH as ADMIN keeps the product own SKU and rejects another product SKU', () => {
+  const productId = freshHexId();
+  const otherProductId = freshHexId();
+  const products = [
+    productDoc({ _id: productId, stockKeepingUnit: 'SKU-ROOT' }),
+    productDoc({
+      _id: otherProductId,
+      slug: 'other-product',
+      stockKeepingUnit: 'SKU-OTHER',
+    }),
+  ];
+  return withServer(
+    () => buildApp({ users: seedUsers(), products }),
+    async (baseUrl) => {
+      const retained = await patch(`${baseUrl}/api/v1/products/${productId}`, tokenAdmin, {
+        name: 'Renamed',
+        stockKeepingUnit: 'sku-root',
+      });
+      assert.equal(retained.status, 200);
+      const retainedBody = await retained.json();
+      assert.equal(retainedBody.data.product.stockKeepingUnit, 'SKU-ROOT');
+
+      const clash = await patch(`${baseUrl}/api/v1/products/${productId}`, tokenAdmin, {
+        stockKeepingUnit: 'SKU-OTHER',
+      });
+      assert.equal(clash.status, 400);
+      const clashBody = await clash.json();
+      assert.equal(clashBody.error.code, ERROR_CODES.PRODUCT_SKU_ALREADY_EXISTS);
+      assert.equal(
+        products.find((p) => p._id === productId).stockKeepingUnit,
+        'SKU-ROOT',
+        'rejected SKU change does not mutate the product'
+      );
+    }
+  )();
+});
+
+test('PATCH as ADMIN changes and clears a product SKU', () => {
+  const productId = freshHexId();
+  const products = [productDoc({ _id: productId, stockKeepingUnit: 'SKU-ROOT' })];
+  return withServer(
+    () => buildApp({ users: seedUsers(), products }),
+    async (baseUrl) => {
+      const changed = await patch(`${baseUrl}/api/v1/products/${productId}`, tokenAdmin, {
+        stockKeepingUnit: 'SKU-NEW',
+      });
+      assert.equal(changed.status, 200);
+      assert.equal((await changed.json()).data.product.stockKeepingUnit, 'SKU-NEW');
+
+      const cleared = await patch(`${baseUrl}/api/v1/products/${productId}`, tokenAdmin, {
+        stockKeepingUnit: null,
+      });
+      assert.equal(cleared.status, 200);
+      assert.equal((await cleared.json()).data.product.stockKeepingUnit, null);
+      assert.ok(
+        !('stockKeepingUnit' in products.find((p) => p._id === productId)),
+        'clear unsets the field instead of storing null'
+      );
     }
   )();
 });

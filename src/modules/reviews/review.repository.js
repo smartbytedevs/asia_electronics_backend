@@ -50,6 +50,36 @@ function createReviewRepository(model) {
       ]);
       return docs.map((row) => ({ rating: Number(row._id), count: Number(row.count) }));
     },
+
+    /**
+     * Batched per-rating counts for MANY products in one aggregate, used by the
+     * catalog list's rating summaries. Returns
+     * `[{ productId, rating, count }]` for APPROVED reviews only.
+     */
+    aggregateApprovedRatingsForProducts: async (productIds = []) => {
+      if (productIds.length === 0) {
+        return [];
+      }
+      const docs = await model.aggregate([
+        {
+          $match: {
+            productId: { $in: productIds.map((id) => new Types.ObjectId(id)) },
+            status: REVIEW_STATUSES.APPROVED,
+          },
+        },
+        {
+          $group: {
+            _id: { productId: '$productId', rating: '$rating' },
+            count: { $sum: 1 },
+          },
+        },
+      ]);
+      return docs.map((row) => ({
+        productId: String(row._id.productId),
+        rating: Number(row._id.rating),
+        count: Number(row.count),
+      }));
+    },
   };
 }
 

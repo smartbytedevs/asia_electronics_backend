@@ -30,6 +30,19 @@ function createReviewController({ reviewService }) {
       });
     },
 
+    // GET /api/v1/products/ratings/summary?ids=a,b,c — public batched rating
+    // summaries for catalog cards (APPROVED reviews only).
+    listRatingSummaries: async (req, res) => {
+      const data = await reviewService.listProductRatingSummaries({
+        productIds: req.query.ids,
+      });
+      res.status(200).json({
+        success: true,
+        message: REVIEW_MESSAGES.REVIEWS_FETCHED,
+        data,
+      });
+    },
+
     // POST /api/v1/products/:productId/reviews — CUSTOMER (own identity).
     createReview: async (req, res) => {
       const { value } = validateCreateInput(req.body);

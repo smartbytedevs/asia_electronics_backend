@@ -149,14 +149,36 @@ test('a null or absent measurement guide serializes to null without crashing', (
   assert.equal(undefinedGuide.measurementGuide, null);
 });
 
-test('product card carries prices, flags, and category but no variants/guide', () => {
+test('product card carries prices, flags, category, and active variants but no guide', () => {
   const card = serializeProductCard(productDoc(), category);
   assert.equal(card.id, '507f1f77bcf86cd799439011');
   assert.equal(card.effectiveSellingPrice, 135000);
   assert.equal(card.category.id, '507f1f77bcf86cd799439020');
-  assert.ok(!('variants' in card), 'card has no variants');
+  assert.deepEqual(card.variants, [], 'no variants attached when none are provided');
   assert.ok(!('measurementGuide' in card), 'card has no measurement guide');
   assert.ok(!('purchasePrice' in card), 'card has no purchase price');
+});
+
+test('product card attaches active variants for the storefront size picker', () => {
+  const variants = [
+    {
+      _id: '507f1f77bcf86cd799439030',
+      sku: 'SPEAKER-BLACK',
+      attributes: { color: 'Black' },
+      isActive: true,
+    },
+    {
+      _id: '507f1f77bcf86cd799439031',
+      sku: 'SPEAKER-RETIRED',
+      attributes: { color: 'Red' },
+      isActive: false,
+    },
+  ];
+  const card = serializeProductCard(productDoc(), category, variants);
+  assert.equal(card.variants.length, 1);
+  assert.equal(card.variants[0].id, '507f1f77bcf86cd799439030');
+  assert.deepEqual(card.variants[0].attributes, { color: 'Black' });
+  assert.ok(!('purchasePriceOverride' in card.variants[0]));
 });
 
 test('base product serializer includes electronics fields with defaults', () => {

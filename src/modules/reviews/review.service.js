@@ -163,6 +163,68 @@ class ReviewService {
     };
   }
 
+  /**
+   * Batched rating summaries for the catalog list: ONE aggregate for every
+   * product on the page instead of one reviews request per card. Only APPROVED
+   * reviews are counted (same rule as the single-product public endpoint).
+   *
+   * `productIds` is either an array or a comma-separated string. The batch is
+   * capped and every id is validated before it reaches the repository.
+   */
+  normalizeRatingProductIds(productIds) {
+    const raw = typeof productIds === 'string' ? productIds.split(',') : productIds;
+    if (raw === undefined || raw === null) {
+      return [];
+    }
+    if (!Array.isArray(raw)) {
+      throw new ApiError(
+        400,
+        'productIds must be a comma-separated list of product ids',
+        ERROR_CODES.INVALID_REVIEW
+      );
+    }
+    const ids = [
+      ...new Set(
+        raw
+          .map((id) => (typeof id === 'string' ? id.trim() : ''))
+          .filter(Boolean)
+      ),
+    ];
+    if (ids.length > 100) {
+      throw new ApiError(
+        400,
+        'at most 100 product ids may be requested at once',
+        ERROR_CODES.INVALID_REVIEW
+      );
+    }
+    for (const id of ids) {
+      assertObjectId(id, 'productId');
+    }
+    return ids;
+  }
+
+  async listProductRatingSummaries({ productIds } = {}) {
+    const ids = this.normalizeRatingProductIds(productIds);
+    if (ids.length === 0) {
+      return { ratings: {} };
+    }
+
+    const rows = await this.reviewRepository.aggregateApprovedRatingsForProducts(ids);
+    const countsByProduct = new Map(ids.map((id) => [id, []]));
+    for (const row of rows) {
+      const counts = countsByProduct.get(row.productId);
+      if (counts) {
+        counts.push({ rating: row.rating, count: row.count });
+      }
+    }
+
+    const ratings = {};
+    for (const id of ids) {
+      ratings[id] = this.buildRatingSummary(countsByProduct.get(id));
+    }
+    return { ratings };
+  }
+
   async performTransition({ reviewId, fromStatus, toStatus, performedBy, note }) {
     assertObjectId(reviewId, 'reviewId');
     assertObjectId(performedBy, 'performedBy');

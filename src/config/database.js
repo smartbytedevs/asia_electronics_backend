@@ -88,14 +88,21 @@ function setupConnectionListeners() {
   });
 }
 
+let connectPromise = null;
+
 /**
- * Connects to MongoDB using the centralized config URI.
- * Fails fast: throws a clear, redacted error when the URI is missing or the
- * database cannot be reached within the bounded selection timeout.
+ * Ensures there is a live MongoDB connection.
  *
- * Safe to call multiple times; returns immediately if already connected.
+ * This is intentionally called before every serverless request instead of
+ * caching a single resolved promise forever. A cached "ready" promise is
+ * exactly how a warm Vercel instance kept reporting itself connected after
+ * the underlying connection had dropped. Concurrent callers share the
+ * in-flight attempt, but every request re-checks the actual readyState.
+ *
+ * Fails fast with a clear, redacted error when the URI is missing or the
+ * database cannot be reached within the bounded timeouts.
  */
-async function connectDatabase() {
+async function ensureDatabaseConnection() {
   if (!config.db.uri) {
     throw new Error(
       'MONGODB_URI is not configured. Add it to .env (see .env.example).'
@@ -106,28 +113,53 @@ async function connectDatabase() {
     return mongoose.connection;
   }
 
+  if (connectPromise) {
+    return connectPromise;
+  }
+
   mongoose.set('bufferCommands', false);
   setupConnectionListeners();
 
-  try {
-    await mongoose.connect(config.db.uri, {
-      serverSelectionTimeoutMS: config.db.serverSelectionTimeoutMs,
-    });
-  } catch (err) {
-    const clean = new Error(
-      `MongoDB connection failed: ${redactUri(err && err.message)}`
-    );
-    clean.cause = err;
-    throw clean;
-  }
+  connectPromise = (async () => {
+    try {
+      await mongoose.connect(config.db.uri, {
+        serverSelectionTimeoutMS: config.db.serverSelectionTimeoutMs,
+        connectTimeoutMS: config.db.connectTimeoutMs,
+        socketTimeoutMS: config.db.socketTimeoutMs,
+        waitQueueTimeoutMS: config.db.waitQueueTimeoutMs,
+        maxPoolSize: config.db.maxPoolSize,
+        minPoolSize: config.db.minPoolSize,
+        maxIdleTimeMS: config.db.maxIdleTimeMs,
+        autoIndex: config.db.autoIndex,
+      });
+    } catch (err) {
+      const clean = new Error(
+        `MongoDB connection failed: ${redactUri(err && err.message)}`
+      );
+      clean.cause = err;
+      throw clean;
+    }
 
-  return mongoose.connection;
+    return mongoose.connection;
+  })().finally(() => {
+    connectPromise = null;
+  });
+
+  return connectPromise;
+}
+
+/**
+ * Backwards-compatible alias for the startup path.
+ */
+async function connectDatabase() {
+  return ensureDatabaseConnection();
 }
 
 /**
  * Closes the MongoDB connection. Safe to call when already disconnected.
  */
 async function disconnectDatabase() {
+  connectPromise = null;
   if (mongoose.connection.readyState === 0) {
     return;
   }
@@ -187,6 +219,7 @@ async function withTransaction(work) {
 
 module.exports = {
   connectDatabase,
+  ensureDatabaseConnection,
   disconnectDatabase,
   getDatabaseState,
   isDatabaseConnected,

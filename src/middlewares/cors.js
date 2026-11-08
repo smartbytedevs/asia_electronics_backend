@@ -24,7 +24,14 @@ const config = require('../config');
  */
 
 const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
-const ALLOWED_HEADERS = ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Guest-Id'];
+const ALLOWED_HEADERS = [
+  'Content-Type',
+  'Authorization',
+  'Idempotency-Key',
+  'X-Guest-Id',
+  'X-Request-Id',
+];
+const EXPOSED_HEADERS = ['X-Request-Id', 'Retry-After'];
 const PREFLIGHT_MAX_AGE_SECONDS = 86400;
 
 function isAllowedOrigin(origin, allowedOrigins) {
@@ -53,6 +60,7 @@ function cors(cfg = config) {
       res.setHeader('Access-Control-Allow-Origin', allowOrigin);
       res.setHeader('Access-Control-Allow-Methods', ALLOWED_METHODS.join(', '));
       res.setHeader('Access-Control-Allow-Headers', ALLOWED_HEADERS.join(', '));
+      res.setHeader('Access-Control-Expose-Headers', EXPOSED_HEADERS.join(', '));
       res.setHeader('Access-Control-Max-Age', String(PREFLIGHT_MAX_AGE_SECONDS));
     }
 

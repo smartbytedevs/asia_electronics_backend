@@ -41,6 +41,10 @@ function createReviewRouter({
   const router = Router();
   const controller = createReviewController({ reviewService });
 
+  // Public batched rating summaries for catalog cards — no auth. Must be
+  // declared before the parameterized review route.
+  router.get('/ratings/summary', controller.listRatingSummaries);
+
   // Public read: APPROVED reviews only — no auth.
   router.get('/:productId/reviews', controller.listProductReviews);
 

@@ -208,8 +208,8 @@ class ProductService {
    * Query controls are allowlisted: filters { categoryId, featured, newArrival,
    * bestDeal }, sort { newest, priceAsc, priceDesc, featured }, and 1-indexed
    * page/limit (default 20, max 100). Arbitrary MongoDB expressions never pass
-   * through. The response is product cards (no variants/measurement guide) for
-   * a fast grid; detail endpoints serve the full product.
+   * through. The response is lightweight product cards with their ACTIVE
+   * variants (no measurement guide); detail endpoints serve the full product.
    */
   async listProducts({ page, limit, filters, sort } = {}) {
     const query = this.normalizeListQuery({ page, limit, filters, sort });
@@ -224,13 +224,30 @@ class ProductService {
       this.repository.count(query.filter),
     ]);
 
-    const products = [];
-    for (const doc of docs) {
-      const category = doc.categoryId
-        ? await this.categoryRepository.findById(String(doc.categoryId))
-        : null;
-      products.push(serializeProductCard(doc, category));
-    }
+    // Resolve every referenced category and the cards' active variants in TWO
+    // batched queries instead of one query per product (the previous N+1
+    // fan-out was the main source of collection-page latency).
+    const categoryIds = [
+      ...new Set(
+        docs
+          .map((doc) => (doc.categoryId ? String(doc.categoryId) : null))
+          .filter(Boolean)
+      ),
+    ];
+    const productIds = docs.map((doc) => String(doc._id));
+
+    const [categoriesById, variantsByProductId] = await Promise.all([
+      this.loadCategoriesByIds(categoryIds),
+      this.loadCardVariantsByProductIds(productIds),
+    ]);
+
+    const products = docs.map((doc) =>
+      serializeProductCard(
+        doc,
+        categoriesById.get(doc.categoryId ? String(doc.categoryId) : '') || null,
+        variantsByProductId.get(String(doc._id)) || []
+      )
+    );
 
     return {
       products,
@@ -241,6 +258,61 @@ class ProductService {
         totalPages: Math.ceil(total / query.limit),
       },
     };
+  }
+
+  /**
+   * Batched category resolution for catalog cards. Falls back to per-id reads
+   * only when a repository double (tests) does not expose `findByIds`.
+   */
+  async loadCategoriesByIds(categoryIds) {
+    const byId = new Map();
+    if (categoryIds.length === 0) {
+      return byId;
+    }
+    if (typeof this.categoryRepository.findByIds === 'function') {
+      const docs = await this.categoryRepository.findByIds(categoryIds);
+      for (const doc of docs || []) {
+        byId.set(String(doc._id), doc);
+      }
+      return byId;
+    }
+    const docs = await Promise.all(
+      categoryIds.map((id) => this.categoryRepository.findById(id))
+    );
+    for (const doc of docs) {
+      if (doc) {
+        byId.set(String(doc._id), doc);
+      }
+    }
+    return byId;
+  }
+
+  /**
+   * Active variants grouped by product id for catalog cards. The list endpoint
+   * is public, so inactive variants are never attached.
+   */
+  async loadCardVariantsByProductIds(productIds) {
+    const byProduct = new Map();
+    if (
+      productIds.length === 0 ||
+      typeof this.variantRepository.findByProductIds !== 'function'
+    ) {
+      return byProduct;
+    }
+    const variants = await this.variantRepository.findByProductIds(productIds, {
+      sort: { _id: 1 },
+    });
+    for (const variant of variants || []) {
+      if (variant.isActive === false) {
+        continue;
+      }
+      const key = String(variant.productId);
+      if (!byProduct.has(key)) {
+        byProduct.set(key, []);
+      }
+      byProduct.get(key).push(variant);
+    }
+    return byProduct;
   }
 
   normalizeListQuery({ page, limit, filters, sort } = {}) {

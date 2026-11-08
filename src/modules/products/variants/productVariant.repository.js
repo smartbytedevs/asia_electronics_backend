@@ -22,6 +22,14 @@ function createVariantRepository(model) {
     findByProduct: (productId, options = {}) =>
       base.findMany({ productId }, options),
 
+    /**
+     * Batch variant lookup for a set of products. Catalog list endpoints use
+     * this to attach card variants in one query instead of one query per
+     * product.
+     */
+    findByProductIds: (productIds = [], options = {}) =>
+      base.findMany({ productId: { $in: productIds } }, options),
+
     findOneByProduct: (productId, filter = {}, options = {}) =>
       base.findOne({ productId, ...filter }, options),
 

@@ -179,11 +179,13 @@ function serializeProductAvailability(productId, inventory) {
 }
 
 /**
- * Lightweight storefront card for catalog LIST responses. Keeps the grid fast:
- * no variants, no measurement guide. Full product detail (variants + guide) is
- * served by the detail endpoints. Purchase cost is never included.
+ * Lightweight storefront card for catalog LIST responses. Includes the active
+ * variants (id/attributes/price/stock-relevant flags) so the storefront can
+ * render size choices without a per-product detail fan-out, but omits the
+ * measurement guide and any purchase-price data. Full product detail is still
+ * served by the detail endpoints.
  */
-function serializeProductCard(product, category) {
+function serializeProductCard(product, category, variants = []) {
   const base = {
     id: String(product._id || product.id),
     name: product.name,
@@ -214,6 +216,11 @@ function serializeProductCard(product, category) {
       ? product.specifications
       : {},
     stockKeepingUnit: product.stockKeepingUnit ?? null,
+    variants: (variants || [])
+      .filter((variant) => variant && variant.isActive !== false)
+      .map((variant) =>
+        serializeVariant(variant, product, { includePurchasePrice: false })
+      ),
     createdAt: product.createdAt ? new Date(product.createdAt).toISOString() : null,
     updatedAt: product.updatedAt ? new Date(product.updatedAt).toISOString() : null,
   };

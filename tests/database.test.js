@@ -40,6 +40,7 @@ function reloadDatabase(env) {
 test('database module exposes a safe public API and connection state', async () => {
   const db = reloadDatabase({ MONGODB_URI: '' });
   assert.equal(typeof db.connectDatabase, 'function');
+  assert.equal(typeof db.ensureDatabaseConnection, 'function');
   assert.equal(typeof db.disconnectDatabase, 'function');
   assert.equal(typeof db.getDatabaseState, 'function');
   assert.equal(typeof db.isDatabaseConnected, 'function');

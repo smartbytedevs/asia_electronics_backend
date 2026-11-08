@@ -30,6 +30,13 @@ function createBaseRepository(model) {
 
     findMany: (filter = {}, options = {}) => model.find(filter, null, options),
 
+    /**
+     * Batch lookup by id. Used by catalog list endpoints to avoid one query per
+     * document (N+1) when resolving referenced documents.
+     */
+    findByIds: (ids = [], options = {}) =>
+      model.find({ _id: { $in: ids } }, null, options),
+
     create: (data, options = {}) => model.create([data], options).then((docs) => docs[0]),
 
     updateById: (id, update, options = {}) =>

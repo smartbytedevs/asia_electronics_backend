@@ -99,10 +99,25 @@ const config = {
 
   db: {
     uri: process.env.MONGODB_URI || '',
-    // Bounded server selection timeout (ms) so a missing/unreachable database
-    // fails fast at startup instead of hanging. Tune via env if needed.
+    // Bounded timeouts so an unreachable/overloaded database fails fast and
+    // the API can return a retryable 503 instead of hanging until the
+    // serverless function times out. All values are tunable per environment.
     serverSelectionTimeoutMs:
       Number.parseInt(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS, 10) || 10000,
+    connectTimeoutMs:
+      Number.parseInt(process.env.MONGODB_CONNECT_TIMEOUT_MS, 10) || 10000,
+    socketTimeoutMs:
+      Number.parseInt(process.env.MONGODB_SOCKET_TIMEOUT_MS, 10) || 45000,
+    waitQueueTimeoutMs:
+      Number.parseInt(process.env.MONGODB_WAIT_QUEUE_TIMEOUT_MS, 10) || 10000,
+    maxPoolSize: Number.parseInt(process.env.MONGODB_MAX_POOL_SIZE, 10) || 10,
+    minPoolSize: Number.parseInt(process.env.MONGODB_MIN_POOL_SIZE, 10) || 0,
+    maxIdleTimeMs:
+      Number.parseInt(process.env.MONGODB_MAX_IDLE_TIME_MS, 10) || 60000,
+    autoIndex:
+      process.env.MONGODB_AUTO_INDEX !== undefined
+        ? (process.env.MONGODB_AUTO_INDEX || 'false').toLowerCase() === 'true'
+        : NODE_ENV !== 'production',
   },
 
   auth: {

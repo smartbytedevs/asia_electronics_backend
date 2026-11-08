@@ -92,7 +92,8 @@ test('cors answers preflight OPTIONS with 204 and the allowed headers', withServ
     });
     assert.equal(res.status, 204);
     assert.equal(res.headers.get('access-control-allow-origin'), 'https://taqwactg.com');
-    assert.equal(res.headers.get('access-control-allow-headers'), 'Content-Type, Authorization, Idempotency-Key, X-Guest-Id');
+    assert.equal(res.headers.get('access-control-allow-headers'), 'Content-Type, Authorization, Idempotency-Key, X-Guest-Id, X-Request-Id');
+    assert.equal(res.headers.get('access-control-expose-headers'), 'X-Request-Id, Retry-After');
     assert.ok(res.headers.get('access-control-max-age'));
   }
 ));

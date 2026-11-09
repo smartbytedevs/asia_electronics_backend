@@ -5,6 +5,7 @@ const PaymentMethod = require('./paymentMethod.model');
 const { createPaymentMethodRepository } = require('./paymentMethod.repository');
 const { PaymentMethodService } = require('./paymentMethod.service');
 const { createPaymentMethodController } = require('./paymentMethod.controller');
+const publicCache = require('../../middlewares/publicCache');
 
 const defaultPaymentMethodService = new PaymentMethodService({
   paymentMethodRepository: createPaymentMethodRepository(PaymentMethod),
@@ -24,7 +25,9 @@ function createPaymentMethodRouter({
   const router = Router();
   const controller = createPaymentMethodController({ paymentMethodService });
 
-  router.get('/', controller.listPaymentMethods);
+  // Public instructions, identical for every visitor; short edge cache keeps
+  // admin edits visible quickly while absorbing repeat storefront reads.
+  router.get('/', publicCache({ sMaxAge: 60 }), controller.listPaymentMethods);
 
   return router;
 }

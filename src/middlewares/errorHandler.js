@@ -55,6 +55,10 @@ function errorHandler(err, req, res, next) {
     res.setHeader('Retry-After', '5');
   }
 
+  // A public-cache route may have set a CDN header before the controller threw;
+  // error payloads must never be cached.
+  res.setHeader('Cache-Control', 'no-store');
+
   const payload = {
     success: false,
     message,

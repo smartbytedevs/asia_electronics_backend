@@ -192,12 +192,19 @@ class ProductService {
    * variants and purchase-price information.
    */
   async loadFullProduct(doc, { includePurchasePrice = false, includeInactive = false } = {}) {
-    const category = doc.categoryId
-      ? await this.categoryRepository.findById(String(doc.categoryId))
-      : null;
-    const variants = await this.variantService.listVariantsForProduct(String(doc._id), {
-      includeInactive,
-    });
+    // The category summary and the variant list are independent reads; run
+    // them together instead of serializing two round-trips on every detail
+    // request. Both are read-only and only feed the serializer, so lean plain
+    // objects are safe (and cheaper than hydrating Mongoose documents).
+    const [category, variants] = await Promise.all([
+      doc.categoryId
+        ? this.categoryRepository.findById(String(doc.categoryId), { lean: true })
+        : Promise.resolve(null),
+      this.variantService.listVariantsForProduct(String(doc._id), {
+        includeInactive,
+        lean: true,
+      }),
+    ]);
     const serialize = includePurchasePrice ? serializeAdminProduct : serializePublicProduct;
     return serialize(doc, variants, category);
   }
@@ -220,6 +227,9 @@ class ProductService {
         sort: query.sort,
         skip,
         limit: query.limit,
+        // Read-only catalog path: cards are serialized from plain fields only,
+        // so skip Mongoose document hydration.
+        lean: true,
       }),
       this.repository.count(query.filter),
     ]);
@@ -270,14 +280,14 @@ class ProductService {
       return byId;
     }
     if (typeof this.categoryRepository.findByIds === 'function') {
-      const docs = await this.categoryRepository.findByIds(categoryIds);
+      const docs = await this.categoryRepository.findByIds(categoryIds, { lean: true });
       for (const doc of docs || []) {
         byId.set(String(doc._id), doc);
       }
       return byId;
     }
     const docs = await Promise.all(
-      categoryIds.map((id) => this.categoryRepository.findById(id))
+      categoryIds.map((id) => this.categoryRepository.findById(id, { lean: true }))
     );
     for (const doc of docs) {
       if (doc) {
@@ -301,6 +311,7 @@ class ProductService {
     }
     const variants = await this.variantRepository.findByProductIds(productIds, {
       sort: { _id: 1 },
+      lean: true,
     });
     for (const variant of variants || []) {
       if (variant.isActive === false) {
@@ -395,7 +406,7 @@ class ProductService {
 
   async getPublicProductById(id) {
     this.assertValidObjectId(id);
-    const doc = await this.repository.findById(id);
+    const doc = await this.repository.findById(id, { lean: true });
     if (!doc || !doc.isActive) {
       throw this.notFound();
     }
@@ -407,7 +418,7 @@ class ProductService {
     if (!normalized) {
       throw this.invalid('product slug is required');
     }
-    const doc = await this.repository.findBySlug(normalized);
+    const doc = await this.repository.findBySlug(normalized, { lean: true });
     if (!doc || !doc.isActive) {
       throw this.notFound();
     }
@@ -470,31 +481,64 @@ class ProductService {
       throw new Error('ProductService requires an inventoryRepository to read availability');
     }
 
-    const doc = await this.repository.findById(id);
+    const doc = await this.repository.findById(id, { lean: true });
     if (!doc || !doc.isActive) {
       throw this.notFound();
     }
 
     const activeVariants = await this.variantService.listVariantsForProduct(String(doc._id), {
       includeInactive: false,
+      lean: true,
     });
 
     // 1. Variant Product Path
     if (activeVariants.length > 0) {
+      const variantIds = activeVariants.map((variant) => String(variant._id));
+      // ONE batched inventory query for every variant instead of the previous
+      // per-variant loop (an N+1 on every storefront availability read).
+      const inventoryByVariantId = await this.loadInventoryByVariantIds(variantIds);
       const availability = [];
       for (const variant of activeVariants) {
-        const inventory = await this.inventoryRepository.findByProductVariantId(String(variant._id));
-        availability.push(serializeVariantAvailability(String(variant._id), inventory));
+        const variantId = String(variant._id);
+        const inventory =
+          inventoryByVariantId !== null
+            ? inventoryByVariantId.get(variantId) || null
+            : await this.inventoryRepository.findByProductVariantId(variantId, { lean: true });
+        availability.push(serializeVariantAvailability(variantId, inventory));
       }
       return { product: null, variants: availability };
     }
 
     // 2. Simple Product Path (No variants)
-    const productInventory = await this.inventoryRepository.findByProductId(String(doc._id));
+    const productInventory = await this.inventoryRepository.findByProductId(String(doc._id), {
+      lean: true,
+    });
     return {
       product: serializeProductAvailability(String(doc._id), productInventory),
       variants: [],
     };
+  }
+
+  /**
+   * Batched central-pool inventory lookup keyed by variant id. Returns `null`
+   * when the repository double (tests / older wiring) does not expose the batch
+   * method, so the caller can fall back to the per-variant read.
+   */
+  async loadInventoryByVariantIds(variantIds) {
+    if (variantIds.length === 0) {
+      return new Map();
+    }
+    if (typeof this.inventoryRepository.findByProductVariantIds !== 'function') {
+      return null;
+    }
+    const docs = await this.inventoryRepository.findByProductVariantIds(variantIds, {
+      lean: true,
+    });
+    const byVariantId = new Map();
+    for (const doc of docs || []) {
+      byVariantId.set(String(doc.productVariantId), doc);
+    }
+    return byVariantId;
   }
 
   /**

@@ -5,6 +5,7 @@ const Outlet = require('./outlet.model');
 const { createOutletRepository } = require('./outlet.repository');
 const { OutletService } = require('./outlet.service');
 const { createOutletController } = require('./outlet.controller');
+const publicCache = require('../../middlewares/publicCache');
 
 /**
  * Default outlet service bound to the central config. Only DB operations
@@ -28,10 +29,23 @@ function createOutletRouter({ outletService = defaultOutletService } = {}) {
   const router = Router();
   const controller = createOutletController({ outletService });
 
-  // Public catalog reads (must be declared before /:id).
-  router.get('/', controller.listOutlets);
-  router.get('/code/:code', controller.getOutletByCode);
-  router.get('/:id', controller.getOutletById);
+  // Public catalog reads (must be declared before /:id). Outlets change
+  // rarely, so they get a longer edge TTL with stale-while-revalidate.
+  router.get(
+    '/',
+    publicCache({ sMaxAge: 300, staleWhileRevalidate: 600 }),
+    controller.listOutlets
+  );
+  router.get(
+    '/code/:code',
+    publicCache({ sMaxAge: 300, staleWhileRevalidate: 600 }),
+    controller.getOutletByCode
+  );
+  router.get(
+    '/:id',
+    publicCache({ sMaxAge: 300, staleWhileRevalidate: 600 }),
+    controller.getOutletById
+  );
 
   return router;
 }

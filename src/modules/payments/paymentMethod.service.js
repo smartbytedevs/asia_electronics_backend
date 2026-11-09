@@ -60,7 +60,7 @@ class PaymentMethodService {
   async listActiveForCustomer() {
     const docs = await this.paymentMethodRepository.findMany(
       { isActive: true },
-      { sort: { sortOrder: 1 } }
+      { sort: { sortOrder: 1 }, lean: true }
     );
     return docs.map((doc) => serializePaymentMethodForCustomer(doc));
   }

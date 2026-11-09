@@ -125,6 +125,17 @@ function createInventoryRepository(model) {
       base.findOne(variantPoolFilter(productVariantId), options),
 
     /**
+     * Batch central-pool lookup for a set of variants. The public availability
+     * endpoint uses this to fetch every variant's inventory in ONE query
+     * instead of one query per variant.
+     */
+    findByProductVariantIds: (productVariantIds = [], options = {}) =>
+      base.findMany(
+        { productVariantId: { $in: productVariantIds }, ...CENTRAL_POOL_FILTER },
+        options
+      ),
+
+    /**
      * Simple-product inventory record (`productId` set, `productVariantId: null`)
      * on the CENTRAL online pool.
      */

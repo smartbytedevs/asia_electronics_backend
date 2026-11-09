@@ -21,7 +21,7 @@ class UserService {
   }
 
   async findById(id) {
-    const user = await this.repository.findById(id);
+    const user = await this.repository.findById(id, { lean: true });
     return user ? this.toApplicationIdentity(user) : null;
   }
 
@@ -37,7 +37,8 @@ class UserService {
    */
   async resolveAuthenticatedUser(authIdentity) {
     const user = await this.repository.findByAuthProviderId(
-      authIdentity.authProviderId
+      authIdentity.authProviderId,
+      { lean: true }
     );
     if (user) {
       return this.toApplicationIdentity(user);
@@ -132,6 +133,7 @@ class UserService {
         sort: { createdAt: -1 },
         skip,
         limit: safeLimit,
+        lean: true,
       }),
       this.repository.count(filter),
     ]);
@@ -152,7 +154,7 @@ class UserService {
    */
   async getCustomer(id) {
     assertObjectId(id, 'id');
-    const doc = await this.repository.findById(id);
+    const doc = await this.repository.findById(id, { lean: true });
     if (!doc) {
       throw this.userNotFound();
     }

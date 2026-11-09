@@ -11,6 +11,7 @@ const { createReviewController } = require('./review.controller');
 const authenticate = require('../../middlewares/authenticate');
 const resolveCurrentUser = require('../../middlewares/resolveCurrentUser');
 const authorizeRoles = require('../../middlewares/authorizeRoles');
+const publicCache = require('../../middlewares/publicCache');
 const { defaultUserService } = require('../users/user.routes');
 const { defaultNotificationService } = require('../notifications/notification.routes');
 
@@ -42,11 +43,20 @@ function createReviewRouter({
   const controller = createReviewController({ reviewService });
 
   // Public batched rating summaries for catalog cards — no auth. Must be
-  // declared before the parameterized review route.
-  router.get('/ratings/summary', controller.listRatingSummaries);
+  // declared before the parameterized review route. Approved reviews are
+  // public, non-personalized data, so short edge caching is safe.
+  router.get(
+    '/ratings/summary',
+    publicCache({ sMaxAge: 60 }),
+    controller.listRatingSummaries
+  );
 
   // Public read: APPROVED reviews only — no auth.
-  router.get('/:productId/reviews', controller.listProductReviews);
+  router.get(
+    '/:productId/reviews',
+    publicCache({ sMaxAge: 60 }),
+    controller.listProductReviews
+  );
 
   // Customer submission: PENDING by default — identity from req.user.
   router.post(

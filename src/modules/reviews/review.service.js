@@ -73,7 +73,7 @@ class ReviewService {
    * invisible, so their reviews are too).
    */
   async assertActiveProduct(productId) {
-    const product = await this.productRepository.findById(productId);
+    const product = await this.productRepository.findById(productId, { lean: true });
     if (!product || product.isActive !== true) {
       throw this.productNotFound();
     }
@@ -142,18 +142,23 @@ class ReviewService {
 
     const { page: safePage, limit: safeLimit, skip } = normalizePagination({ page, limit });
     const filter = { productId, status: REVIEW_STATUSES.APPROVED };
-    const [docs, total, ratingCounts] = await Promise.all([
+    // The rating aggregate already counts EVERY approved review for this
+    // product, so its `totalReviews` is the pagination total — the extra
+    // countDocuments query was redundant.
+    const [docs, ratingCounts] = await Promise.all([
       this.reviewRepository.findMany(filter, {
         sort: { createdAt: -1 },
         skip,
         limit: safeLimit,
+        lean: true,
       }),
-      this.reviewRepository.count(filter),
       this.reviewRepository.aggregateApprovedRatings(productId),
     ]);
+    const summary = this.buildRatingSummary(ratingCounts);
+    const total = summary.totalReviews;
     return {
       reviews: docs.map((doc) => serializePublicReview(doc)),
-      summary: this.buildRatingSummary(ratingCounts),
+      summary,
       pagination: {
         page: safePage,
         limit: safeLimit,
@@ -268,6 +273,7 @@ class ReviewService {
         sort: { createdAt: -1 },
         skip,
         limit: safeLimit,
+        lean: true,
       }),
       this.reviewRepository.count(filter),
     ]);

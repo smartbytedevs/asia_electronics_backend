@@ -107,7 +107,7 @@ class OutletService {
   async listOutlets() {
     const docs = await this.repository.findMany(
       { isActive: true },
-      { sort: { name: 1, createdAt: 1 } }
+      { sort: { name: 1, createdAt: 1 }, lean: true }
     );
     return docs.map((doc) => serializeOutlet(doc));
   }
@@ -127,7 +127,7 @@ class OutletService {
 
   async getOutletById(id) {
     this.assertValidObjectId(id);
-    const doc = await this.repository.findById(id);
+    const doc = await this.repository.findById(id, { lean: true });
     if (!doc || !doc.isActive) {
       throw this.notFound();
     }
@@ -149,7 +149,7 @@ class OutletService {
 
   async getOutletByCode(code) {
     const normalized = this.normalizeCode(code);
-    const doc = await this.repository.findByCode(normalized);
+    const doc = await this.repository.findByCode(normalized, { lean: true });
     if (!doc || !doc.isActive) {
       throw this.notFound();
     }

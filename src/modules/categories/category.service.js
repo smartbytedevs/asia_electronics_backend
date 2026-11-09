@@ -117,14 +117,14 @@ class CategoryService {
   async listCategories() {
     const docs = await this.repository.findMany(
       { isActive: true },
-      { sort: { sortOrder: 1, createdAt: 1 } }
+      { sort: { sortOrder: 1, createdAt: 1 }, lean: true }
     );
     return docs.map((doc) => this.toSafeCategory(doc));
   }
 
   async getCategoryById(id) {
     this.assertValidObjectId(id);
-    const doc = await this.repository.findById(id);
+    const doc = await this.repository.findById(id, { lean: true });
     if (!doc || !doc.isActive) {
       throw this.notFound();
     }
@@ -136,7 +136,7 @@ class CategoryService {
     if (!normalized) {
       throw this.invalid(CATEGORY_MESSAGES.INVALID_CATEGORY_SLUG);
     }
-    const doc = await this.repository.findBySlug(normalized);
+    const doc = await this.repository.findBySlug(normalized, { lean: true });
     if (!doc || !doc.isActive) {
       throw this.notFound();
     }

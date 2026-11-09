@@ -496,12 +496,17 @@ function createVariantService({ repository, productRepository } = {}) {
       }
     },
 
-    async listVariantsForProduct(productId, { includeInactive = false } = {}) {
+    async listVariantsForProduct(productId, { includeInactive = false, lean = false } = {}) {
       const filter = { productId };
       if (!includeInactive) {
         filter.isActive = true;
       }
-      return repository.findMany(filter, { sort: { _id: 1 } });
+      // `lean` is opt-in: read-only serialization paths can skip document
+      // hydration, while write paths keep hydrated docs.
+      return repository.findMany(filter, {
+        sort: { _id: 1 },
+        ...(lean ? { lean: true } : {}),
+      });
     },
 
     /**

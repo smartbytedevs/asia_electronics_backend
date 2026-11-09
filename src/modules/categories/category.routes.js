@@ -9,6 +9,7 @@ const { createCategoryController } = require('./category.controller');
 const authenticate = require('../../middlewares/authenticate');
 const resolveCurrentUser = require('../../middlewares/resolveCurrentUser');
 const authorizeRoles = require('../../middlewares/authorizeRoles');
+const publicCache = require('../../middlewares/publicCache');
 const { defaultUserService } = require('../users/user.routes');
 
 /**
@@ -38,10 +39,23 @@ function createCategoryRouter({
   const router = Router();
   const controller = createCategoryController({ categoryService });
 
-  // Public catalog reads (must be declared before /:id).
-  router.get('/', controller.listCategories);
-  router.get('/slug/:slug', controller.getCategoryBySlug);
-  router.get('/:id', controller.getCategoryById);
+  // Public catalog reads (must be declared before /:id). Categories change
+  // rarely, so they get a longer edge TTL with stale-while-revalidate.
+  router.get(
+    '/',
+    publicCache({ sMaxAge: 300, staleWhileRevalidate: 600 }),
+    controller.listCategories
+  );
+  router.get(
+    '/slug/:slug',
+    publicCache({ sMaxAge: 300, staleWhileRevalidate: 600 }),
+    controller.getCategoryBySlug
+  );
+  router.get(
+    '/:id',
+    publicCache({ sMaxAge: 300, staleWhileRevalidate: 600 }),
+    controller.getCategoryById
+  );
 
   // Administrative mutations — ADMIN only.
   router.post(

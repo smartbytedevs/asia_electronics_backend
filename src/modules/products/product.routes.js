@@ -16,6 +16,7 @@ const { createInventoryRepository } = require('../inventory/inventory.repository
 const authenticate = require('../../middlewares/authenticate');
 const resolveCurrentUser = require('../../middlewares/resolveCurrentUser');
 const authorizeRoles = require('../../middlewares/authorizeRoles');
+const publicCache = require('../../middlewares/publicCache');
 const { defaultUserService } = require('../users/user.routes');
 
 /**
@@ -67,11 +68,17 @@ function createProductRouter({
   const router = Router();
   const controller = createProductController({ productService });
 
-  // Public catalog reads (must be declared before /:id).
-  router.get('/', controller.listProducts);
-  router.get('/slug/:slug', controller.getProductBySlug);
+  // Public catalog reads (must be declared before /:id). These responses are
+  // identical for every visitor, so they may be served from the Vercel edge
+  // cache. Availability is intentionally NOT cached — stock must stay fresh.
+  router.get('/', publicCache({ sMaxAge: 60 }), controller.listProducts);
+  router.get(
+    '/slug/:slug',
+    publicCache({ sMaxAge: 60 }),
+    controller.getProductBySlug
+  );
   router.get('/:id/availability', controller.getProductAvailability);
-  router.get('/:id', controller.getProductById);
+  router.get('/:id', publicCache({ sMaxAge: 60 }), controller.getProductById);
 
   // Product + initial variants creation — STAFF and ADMIN.
   router.post(
